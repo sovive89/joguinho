@@ -1,7 +1,6 @@
 {
   "version": 2,
   "name": "joguinho",
-  "public": true,
   "builds": [
     {
       "src": "jogo_main.html",
