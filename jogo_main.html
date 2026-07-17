@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Jogo do Ricardo</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+  :root {
+    --bg: #0d0d12;
+    --p1-color: #00f3ff;
+    --p2-color: #ff00ff;
+    --green: #00ff66;
+    --grid-line: #2a2a4a;
+  }
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body {
+    background: var(--bg);
+    color: white;
+    font-family: 'Courier New', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 12px;
+    text-align: center;
+  }
+  .tela { display: none; width: 100%; max-width: 400px; }
+  .tela.active { display: flex; flex-direction: column; align-items: center; }
+
+  h1 {
+    font-size: 2rem;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: var(--p2-color);
+    text-shadow: 2px 2px 0 var(--p1-color);
+    margin-bottom: 10px;
+  }
+  .subtitulo { color: #999; margin-bottom: 30px; font-size: 0.9rem; }
+
+  button {
+    background: transparent;
+    border: 2px solid var(--p1-color);
+    color: var(--p1-color);
+    font-family: inherit;
+    font-size: 1.1rem;
+    padding: 14px 28px;
+    border-radius: 8px;
+    margin: 8px 0;
+    width: 100%;
+    max-width: 280px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  button:active { background: var(--p1-color); color: black; }
+  button.secundario { border-color: var(--p2-color); color: var(--p2-color); }
+  button.secundario:active { background: var(--p2-color); color: black; }
+
+  input {
+    background: black;
+    border: 2px solid var(--grid-line);
+    color: white;
+    font-family: inherit;
+    font-size: 1.4rem;
+    padding: 12px;
+    text-align: center;
+    text-transform: uppercase;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    width: 100%;
+    max-width: 280px;
+    letter-spacing: 4px;
+  }
+
+  #codigoSala {
+    font-size: 2.5rem;
+    letter-spacing: 6px;
+    color: var(--green);
+    margin: 20px 0;
+    font-weight: bold;
+  }
+  .status-msg { color: #999; margin-top: 15px; font-size: 0.95rem; }
+
+  /* TELA DE JOGO */
+  .placar {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    max-width: 380px;
+    margin-bottom: 12px;
+    gap: 10px;
+  }
+  .placar-jogador {
+    flex: 1;
+    border: 2px solid var(--grid-line);
+    border-radius: 8px;
+    padding: 8px;
+    transition: all 0.15s;
+  }
+  .placar-jogador.p1 { border-color: var(--p1-color); }
+  .placar-jogador.p2 { border-color: var(--p2-color); }
+  .placar-jogador.ativo.p1 { box-shadow: 0 0 15px var(--p1-color); background: rgba(0,243,255,0.08); }
+  .placar-jogador.ativo.p2 { box-shadow: 0 0 15px var(--p2-color); background: rgba(255,0,255,0.08); }
+  .placar-jogador .nome { font-size: 0.75rem; color: #999; }
+  .placar-jogador.p1 .nome { color: var(--p1-color); }
+  .placar-jogador.p2 .nome { color: var(--p2-color); }
+  .placar-jogador .rodada { font-size: 0.8rem; margin-top: 2px; color: #999; }
+  .placar-jogador .cronometro-mini {
+    font-size: 1.1rem;
+    font-weight: bold;
+    margin-top: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .placar-jogador.p1 .cronometro-mini { color: var(--p1-color); }
+  .placar-jogador.p2 .cronometro-mini { color: var(--p2-color); }
+
+  /* CRONOMETRO EM DESTAQUE (lupa) */
+  #cronometroLupa {
+    display: none;
+    font-size: 3.5rem;
+    font-weight: bold;
+    margin: 10px 0;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    transition: color 0.1s;
+  }
+  #cronometroLupa.show { display: block; }
+  #cronometroLupa.p1cor { color: var(--p1-color); text-shadow: 0 0 25px var(--p1-color); }
+  #cronometroLupa.p2cor { color: var(--p2-color); text-shadow: 0 0 25px var(--p2-color); }
+
+  #turnoAviso {
+    font-size: 1.1rem;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    min-height: 1.4em;
+  }
+
+  .grid-area {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 380px;
+  }
+
+  .acumulado-lateral {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    border: 2px solid var(--grid-line);
+    border-radius: 8px;
+    padding: 6px 2px;
+    transition: all 0.15s;
+  }
+  .acumulado-lateral.p1 { border-color: var(--p1-color); }
+  .acumulado-lateral.p2 { border-color: var(--p2-color); }
+  .acumulado-lateral .acumulado-label {
+    font-size: 0.6rem;
+    color: #999;
+    text-transform: uppercase;
+    line-height: 1.2;
+    margin-bottom: 6px;
+  }
+  .acumulado-lateral.p1 .acumulado-label { color: var(--p1-color); }
+  .acumulado-lateral.p2 .acumulado-label { color: var(--p2-color); }
+  .acumulado-lateral .acumulado-valor {
+    font-size: 0.85rem;
+    font-weight: bold;
+    font-variant-numeric: tabular-nums;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+  }
+  .acumulado-lateral.p1 .acumulado-valor { color: var(--p1-color); }
+  .acumulado-lateral.p2 .acumulado-valor { color: var(--p2-color); }
+  .acumulado-lateral.subindo {
+    box-shadow: 0 0 12px currentColor;
+  }
+
+  .grid-container {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(7, 1fr);
+    gap: 8px;
+    border: 3px solid var(--grid-line);
+    border-radius: 8px;
+    flex: 1;
+    height: 50vh;
+    max-height: 420px;
+    padding: 5px;
+  }
+  .cell {
+    background: black;
+    border: 2px solid var(--grid-line);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-variant-numeric: tabular-nums;
+    color: black;
+  }
+  .cell.active.p1 { background: var(--p1-color); box-shadow: 0 0 15px var(--p1-color); border-color: var(--p1-color); }
+  .cell.active.p2 { background: var(--p2-color); box-shadow: 0 0 15px var(--p2-color); border-color: var(--p2-color); }
+  .cell.active.bloqueado {
+    background: black;
+    box-shadow: none;
+    opacity: 0.5;
+    border-style: dashed;
+    cursor: not-allowed;
+  }
+  .cell.active.bloqueado.p1 { border-color: var(--p1-color); color: var(--p1-color); }
+  .cell.active.bloqueado.p2 { border-color: var(--p2-color); color: var(--p2-color); }
+  .cell.active.bloqueado .cronoCell { color: inherit; }
+  .cell .cronoCell {
+    font-size: 0.7rem;
+    line-height: 1;
+    text-shadow: none;
+  }
+
+  /* TELA FINAL */
+  .resultado-linha { font-size: 1.3rem; margin: 10px 0; }
+  .vencedor { font-size: 1.8rem; color: var(--green); margin: 20px 0; font-weight: bold; }
+
+  .btn-flutuante {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 220px;
+    font-size: 0.8rem;
+    padding: 10px 20px;
+    opacity: 0.85;
+    z-index: 50;
+  }
+</style>
+</head>
+<body>
+
+  <!-- TELA ABERTURA -->
+  <div class="tela active" id="telaAbertura">
+    <h1>Jogo do Ricardo</h1>
+    <p class="subtitulo">Reflexo em dupla — quem for mais rápido, vence!</p>
+    <button id="btnCriarSala">Criar Sala</button>
+    <button class="secundario" id="btnMostrarEntrar">Entrar em Sala</button>
+  </div>
+
+  <!-- TELA SALA -->
+  <div class="tela" id="telaSala">
+    <h1 style="font-size:1.4rem;">Sala</h1>
+    <div id="blocoCodigoGerado" style="display:none;">
+      <p class="subtitulo">Compartilhe este código:</p>
+      <div id="codigoSala"></div>
+      <p class="status-msg" id="statusSala">Aguardando o outro jogador entrar...</p>
+    </div>
+    <div id="blocoEntrarCodigo" style="display:none;">
+      <p class="subtitulo">Digite o código da sala:</p>
+      <input type="text" id="inputCodigo" maxlength="6" placeholder="XXXXXX">
+      <button id="btnConectar">Conectar</button>
+      <p class="status-msg" id="statusEntrar"></p>
+    </div>
+  </div>
+
+  <!-- TELA JOGO -->
+  <div class="tela" id="telaJogo">
+    <div class="placar">
+      <div class="placar-jogador p1" id="painelP1">
+        <div class="nome">JOGADOR 1</div>
+        <div class="rodada"><span id="rodadaP1">0</span>/10</div>
+        <div class="cronometro-mini"><span id="cronoMiniP1">--</span></div>
+      </div>
+      <div class="placar-jogador p2" id="painelP2">
+        <div class="nome">JOGADOR 2</div>
+        <div class="rodada"><span id="rodadaP2">0</span>/10</div>
+        <div class="cronometro-mini"><span id="cronoMiniP2">--</span></div>
+      </div>
+    </div>
+
+    <div id="turnoAviso">Aguardando...</div>
+    <div id="cronometroLupa">--</div>
+
+    <div class="grid-area">
+      <div class="acumulado-lateral p1" id="acumuladoLateralP1">
+        <div class="acumulado-label">P1<br>total</div>
+        <div class="acumulado-valor" id="acumuladoP1">0.000</div>
+      </div>
+      <div class="grid-container" id="grid"></div>
+      <div class="acumulado-lateral p2" id="acumuladoLateralP2">
+        <div class="acumulado-label">P2<br>total</div>
+        <div class="acumulado-valor" id="acumuladoP2">0.000</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TELA FIM -->
+  <div class="tela" id="telaFim">
+    <h1 style="font-size:1.4rem;">Fim de Jogo!</h1>
+    <div class="vencedor" id="vencedorTexto"></div>
+    <div class="resultado-linha">Jogador 1 — tempo acumulado: <span id="restanteP1"></span>s</div>
+    <div class="resultado-linha">Jogador 2 — tempo acumulado: <span id="restanteP2"></span>s</div>
+    <button id="btnNovoJogo" style="margin-top:25px;">Reiniciar Tudo</button>
+  </div>
+
+  <!-- BOTÃO FLUTUANTE DE REINICIAR (durante o jogo) -->
+  <button id="btnReiniciarJogo" class="secundario btn-flutuante" style="display:none;">Reiniciar Tudo</button>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyAbq7nCdpXWg7K27MF4IZYI6cV3RcGhqlg",
+    authDomain: "studio-2069759902-84005.firebaseapp.com",
+    projectId: "studio-2069759902-84005",
+    storageBucket: "studio-2069759902-84005.firebasestorage.app",
+    messagingSenderId: "712033438732",
+    appId: "1:712033438732:web:1a63c1c11112b091d07229",
+    databaseURL: "https://studio-2069759902-84005-default-rtdb.firebaseio.com/"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  const TOTAL_RODADAS = 10;   // rodadas por jogador (20 quadrados no total)
+  const TOTAL_CELULAS = 28;
+  const TEMPO_MIN = 1;        // segundos, inteiro
+  const TEMPO_MAX = 10;       // segundos, inteiro
+
+  let salaId = null;
+  let meuJogador = null; // 1 ou 2
+  let jogoIniciado = false;
+  let tickInterval = null;
+  let cronoAtivoTurno = null; // qual turno o cronômetro visual local está rodando
+
+  // Telas
+  function mostrarTela(id) {
+    document.querySelectorAll('.tela').forEach(t => t.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.getElementById('btnReiniciarJogo').style.display = (id === 'telaJogo') ? 'block' : 'none';
+  }
+
+  // ---------- CRIAR / ENTRAR ----------
+  document.getElementById('btnCriarSala').onclick = criarSala;
+  document.getElementById('btnMostrarEntrar').onclick = () => {
+    mostrarTela('telaSala');
+    document.getElementById('blocoEntrarCodigo').style.display = 'block';
+  };
+  document.getElementById('btnConectar').onclick = entrarSala;
+  document.getElementById('btnNovoJogo').onclick = reiniciarTudo;
+  document.getElementById('btnReiniciarJogo').onclick = () => {
+    if (confirm('Reiniciar o jogo do zero para os dois jogadores?')) reiniciarTudo();
+  };
+
+  function reiniciarTudo() {
+    if (!salaId) { location.reload(); return; }
+    resultadoMostrado = false;
+    ultimaCelulaRenderizada = -1;
+    ultimoAcumuladoP1 = 0;
+    ultimoAcumuladoP2 = 0;
+    pararCronometroVisual();
+    if (watchdogTimeout) { clearTimeout(watchdogTimeout); watchdogTimeout = null; }
+
+    db.ref('salas/' + salaId).update({
+      rodadaP1: 0,
+      rodadaP2: 0,
+      acumuladoP1: 0,
+      acumuladoP2: 0,
+      turno: 1,
+      activeCellIndex: -1,
+      tempoRodada: 0,
+      inicioRodada: 0,
+      finalizado: false
+    }).then(() => {
+      mostrarTela('telaJogo');
+      criarGrade();
+      if (meuJogador === 1) {
+        sortearNovaRodada(1);
+      }
+    });
+  }
+
+  function gerarCodigo() {
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
+  }
+
+  // Sorteia um inteiro entre TEMPO_MIN e TEMPO_MAX (inclusive)
+  function sortearTempo() {
+    return Math.floor(Math.random() * (TEMPO_MAX - TEMPO_MIN + 1)) + TEMPO_MIN;
+  }
+
+  function criarSala() {
+    salaId = gerarCodigo();
+    meuJogador = 1;
+    mostrarTela('telaSala');
+    document.getElementById('blocoCodigoGerado').style.display = 'block';
+    document.getElementById('codigoSala').innerText = salaId;
+
+    db.ref('salas/' + salaId).set({
+      status: 'aguardando',
+      rodadaP1: 0,
+      rodadaP2: 0,
+      acumuladoP1: 0,
+      acumuladoP2: 0,
+      turno: 1,
+      activeCellIndex: -1,
+      tempoRodada: 0,        // duração sorteada da rodada atual (segundos, inteiro)
+      inicioRodada: 0,       // timestamp (ms) de quando o quadrado atual acendeu
+      jogador2Entrou: false,
+      finalizado: false
+    });
+
+    escutarSala();
+  }
+
+  function entrarSala() {
+    const codigo = document.getElementById('inputCodigo').value.trim().toUpperCase();
+    if (!codigo) return;
+
+    salaId = codigo;
+    meuJogador = 2;
+
+    db.ref('salas/' + salaId).once('value').then(snap => {
+      if (!snap.exists()) {
+        document.getElementById('statusEntrar').innerText = 'Sala não encontrada!';
+        return;
+      }
+      db.ref('salas/' + salaId).update({
+        jogador2Entrou: true,
+        status: 'jogando'
+      });
+      escutarSala();
+    });
+  }
+
+  // ---------- SINCRONIZAÇÃO ----------
+  function escutarSala() {
+    db.ref('salas/' + salaId).on('value', snap => {
+      const d = snap.val();
+      if (!d) return;
+
+      if (d.jogador2Entrou && !jogoIniciado) {
+        jogoIniciado = true;
+        mostrarTela('telaJogo');
+        criarGrade();
+        // Jogador 1 sorteia a primeira rodada
+        if (meuJogador === 1 && d.activeCellIndex === -1) {
+          sortearNovaRodada(1);
+        }
+      }
+
+      atualizarPlacar(d);
+      atualizarCelulaAtiva(d);
+      verificarTravamento(d);
+
+      if (d.finalizado) {
+        mostrarResultado(d);
+      }
+    });
+  }
+
+  // Rede de segurança: se ninguém sortear a próxima rodada em ~1.5s, qualquer
+  // cliente conectado tenta sortear (evita travar em "preparando próxima rodada").
+  let watchdogTimeout = null;
+  function verificarTravamento(d) {
+    if (d.finalizado) {
+      if (watchdogTimeout) { clearTimeout(watchdogTimeout); watchdogTimeout = null; }
+      return;
+    }
+    if (d.activeCellIndex === -1 || d.activeCellIndex === undefined) {
+      if (watchdogTimeout) return; // já tem um watchdog agendado
+      const turnoEsperado = d.turno;
+      watchdogTimeout = setTimeout(() => {
+        watchdogTimeout = null;
+        db.ref('salas/' + salaId).once('value').then(snap2 => {
+          const d2 = snap2.val();
+          if (!d2 || d2.finalizado) return;
+          if (d2.activeCellIndex !== -1 && d2.activeCellIndex !== undefined) return; // já foi sorteado
+          sortearNovaRodada(turnoEsperado);
+        });
+      }, 1500);
+    } else if (watchdogTimeout) {
+      clearTimeout(watchdogTimeout);
+      watchdogTimeout = null;
+    }
+  }
+
+  let ultimoAcumuladoP1 = 0;
+  let ultimoAcumuladoP2 = 0;
+  function atualizarPlacar(d) {
+    document.getElementById('rodadaP1').innerText = d.rodadaP1 || 0;
+    document.getElementById('rodadaP2').innerText = d.rodadaP2 || 0;
+
+    const novoP1 = Number(d.acumuladoP1 || 0);
+    const novoP2 = Number(d.acumuladoP2 || 0);
+    document.getElementById('acumuladoP1').innerText = novoP1.toFixed(3);
+    document.getElementById('acumuladoP2').innerText = novoP2.toFixed(3);
+
+    if (novoP1 > ultimoAcumuladoP1) pulsarAcumulado('acumuladoLateralP1');
+    if (novoP2 > ultimoAcumuladoP2) pulsarAcumulado('acumuladoLateralP2');
+    ultimoAcumuladoP1 = novoP1;
+    ultimoAcumuladoP2 = novoP2;
+
+    document.getElementById('painelP1').classList.toggle('ativo', d.turno === 1 && d.activeCellIndex !== -1);
+    document.getElementById('painelP2').classList.toggle('ativo', d.turno === 2 && d.activeCellIndex !== -1);
+
+    if (d.finalizado) {
+      document.getElementById('turnoAviso').innerText = 'Fim de jogo!';
+    } else if (d.activeCellIndex === -1) {
+      document.getElementById('turnoAviso').innerText = 'Preparando próxima rodada...';
+    } else {
+      document.getElementById('turnoAviso').innerText =
+        d.turno === meuJogador ? 'SUA VEZ! CLIQUE NO QUADRADO!' : `Vez do Jogador ${d.turno}`;
+    }
+  }
+
+  function pulsarAcumulado(elId) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    el.classList.add('subindo');
+    setTimeout(() => el.classList.remove('subindo'), 400);
+  }
+
+  // ---------- GRADE ----------
+  function criarGrade() {
+    const grid = document.getElementById('grid');
+    grid.innerHTML = '';
+    for (let i = 0; i < TOTAL_CELULAS; i++) {
+      const cell = document.createElement('div');
+      cell.classList.add('cell');
+      cell.dataset.index = i;
+      cell.addEventListener('click', () => onClique(i));
+      cell.addEventListener('touchend', e => { e.preventDefault(); onClique(i); }, {passive:false});
+      grid.appendChild(cell);
+    }
+  }
+
+  let ultimaCelulaRenderizada = -1;
+  function atualizarCelulaAtiva(d) {
+    const index = d.activeCellIndex;
+
+    if (index !== ultimaCelulaRenderizada) {
+      ultimaCelulaRenderizada = index;
+      document.querySelectorAll('.cell').forEach(c => { c.classList.remove('active', 'p1', 'p2'); c.innerHTML = ''; });
+      if (index !== -1 && index !== undefined) {
+        const cell = document.querySelector(`.cell[data-index="${index}"]`);
+        if (cell) {
+          cell.classList.add('active', d.turno === 1 ? 'p1' : 'p2');
+          if (d.turno !== meuJogador) cell.classList.add('bloqueado');
+          cell.innerHTML = '<span class="cronoCell" id="cronoCellAtiva">--</span>';
+        }
+      }
+    }
+
+    // Controla o cronômetro visual local (lupa + mini) baseado no estado da sala
+    if (index !== -1 && index !== undefined && !d.finalizado) {
+      if (cronoAtivoTurno !== d.turno) {
+        iniciarCronometroVisual(d.turno, d.tempoRodada, d.inicioRodada);
+      }
+    } else {
+      pararCronometroVisual();
+    }
+  }
+
+  function sortearNovaRodada(turno) {
+    let idx;
+    do { idx = Math.floor(Math.random() * TOTAL_CELULAS); } while (idx === ultimaCelulaRenderizada);
+    const tempo = sortearTempo();
+    db.ref('salas/' + salaId).update({
+      activeCellIndex: idx,
+      turno: turno,
+      tempoRodada: tempo,
+      inicioRodada: firebase.database.ServerValue.TIMESTAMP
+    });
+  }
+
+  // ---------- CRONÔMETRO VISUAL (regressivo, inteiro) ----------
+  function iniciarCronometroVisual(turno, tempoRodada, inicioRodada) {
+    cronoAtivoTurno = turno;
+    const lupa = document.getElementById('cronometroLupa');
+    const miniId = turno === 1 ? 'cronoMiniP1' : 'cronoMiniP2';
+    const mini = document.getElementById(miniId);
+
+    lupa.classList.add('show');
+    lupa.classList.remove('p1cor', 'p2cor');
+    lupa.classList.add(turno === 1 ? 'p1cor' : 'p2cor');
+
+    if (tickInterval) clearInterval(tickInterval);
+
+    // Se inicioRodada ainda não foi resolvido pelo servidor (null durante o set), tenta de novo em breve
+    if (!inicioRodada) {
+      db.ref('salas/' + salaId).child('inicioRodada').once('value').then(snap => {
+        const val = snap.val();
+        if (val) iniciarCronometroVisual(turno, tempoRodada, val);
+      });
+      return;
+    }
+
+    function tick() {
+      const passouMs = Date.now() - inicioRodada;
+      const restanteSeg = Math.max(0, tempoRodada - passouMs / 1000);
+      const texto = restanteSeg.toFixed(3);
+
+      lupa.innerText = texto;
+      mini.innerText = texto;
+      const cronoCell = document.getElementById('cronoCellAtiva');
+      if (cronoCell) cronoCell.innerText = texto;
+
+      if (restanteSeg <= 0) {
+        clearInterval(tickInterval);
+        tickInterval = null;
+        // Tempo esgotado: quem estava jogando perde por tempo (acumula o total da rodada, sem clicar)
+        finalizarPorTempo(turno, tempoRodada);
+      }
+    }
+
+    tick();
+    tickInterval = setInterval(tick, 100);
+  }
+
+  function pararCronometroVisual() {
+    cronoAtivoTurno = null;
+    document.getElementById('cronometroLupa').classList.remove('show');
+    document.getElementById('cronoMiniP1').innerText = '--';
+    document.getElementById('cronoMiniP2').innerText = '--';
+    if (tickInterval) { clearInterval(tickInterval); tickInterval = null; }
+  }
+
+  // ---------- CLIQUE ----------
+  function onClique(index) {
+    db.ref('salas/' + salaId).once('value').then(snap => {
+      const d = snap.val();
+      if (!d || d.finalizado) return;
+      if (d.turno !== meuJogador) return;
+      if (index !== d.activeCellIndex) return;
+      if (!d.inicioRodada) return;
+
+      const passouMs = Date.now() - d.inicioRodada;
+      const gastoSeg = Math.min(d.tempoRodada, Math.max(0, passouMs / 1000));
+      const residualSeg = Math.max(0, d.tempoRodada - gastoSeg); // tempo que sobrou quando clicou
+
+      pararCronometroVisual();
+
+      const campoAcumulado = meuJogador === 1 ? 'acumuladoP1' : 'acumuladoP2';
+      const campoRodada = meuJogador === 1 ? 'rodadaP1' : 'rodadaP2';
+      const novoAcumulado = Number((d[campoAcumulado] || 0) + residualSeg);
+      const novaRodada = (d[campoRodada] || 0) + 1;
+
+      const updates = {};
+      updates[campoAcumulado] = novoAcumulado;
+      updates[campoRodada] = novaRodada;
+
+      const rodadaP1Final = meuJogador === 1 ? novaRodada : d.rodadaP1;
+      const rodadaP2Final = meuJogador === 2 ? novaRodada : d.rodadaP2;
+
+      if (rodadaP1Final >= TOTAL_RODADAS && rodadaP2Final >= TOTAL_RODADAS) {
+        updates.finalizado = true;
+        updates.activeCellIndex = -1;
+        db.ref('salas/' + salaId).update(updates);
+      } else {
+        const proximoTurno = meuJogador === 1 ? 2 : 1;
+        updates.activeCellIndex = -1; // some o quadrado até o próximo ser sorteado
+        db.ref('salas/' + salaId).update(updates).then(() => {
+          ultimaCelulaRenderizada = -1;
+          // Sorteio da próxima rodada é sempre feito pelo cliente do Jogador 1,
+          // para evitar que os dois clientes tentem sortear ao mesmo tempo.
+          if (meuJogador === 1) {
+            sortearNovaRodada(proximoTurno);
+          }
+        });
+      }
+    });
+  }
+
+  function finalizarPorTempo(turno, tempoRodada) {
+    db.ref('salas/' + salaId).once('value').then(snap => {
+      const d = snap.val();
+      if (!d || d.finalizado) return;
+      if (d.turno !== turno) return; // já avançou, ignora
+
+      const campoAcumulado = turno === 1 ? 'acumuladoP1' : 'acumuladoP2';
+      const campoRodada = turno === 1 ? 'rodadaP1' : 'rodadaP2';
+      const novoAcumulado = Number((d[campoAcumulado] || 0) + tempoRodada);
+      const novaRodada = (d[campoRodada] || 0) + 1;
+
+      const updates = {};
+      updates[campoAcumulado] = novoAcumulado;
+      updates[campoRodada] = novaRodada;
+
+      const rodadaP1Final = turno === 1 ? novaRodada : d.rodadaP1;
+      const rodadaP2Final = turno === 2 ? novaRodada : d.rodadaP2;
+
+      if (rodadaP1Final >= TOTAL_RODADAS && rodadaP2Final >= TOTAL_RODADAS) {
+        updates.finalizado = true;
+        updates.activeCellIndex = -1;
+        db.ref('salas/' + salaId).update(updates);
+      } else {
+        const proximoTurno = turno === 1 ? 2 : 1;
+        updates.activeCellIndex = -1;
+        db.ref('salas/' + salaId).update(updates).then(() => {
+          // Só o jogador 1 sorteia para evitar corrida entre os dois clientes
+          if (meuJogador === 1) {
+            ultimaCelulaRenderizada = -1;
+            sortearNovaRodada(proximoTurno);
+          }
+        });
+      }
+    });
+  }
+
+  // ---------- RESULTADO ----------
+  let resultadoMostrado = false;
+  function mostrarResultado(d) {
+    if (resultadoMostrado) return;
+    resultadoMostrado = true;
+    pararCronometroVisual();
+
+    const t1 = Number(d.acumuladoP1 || 0).toFixed(3);
+    const t2 = Number(d.acumuladoP2 || 0).toFixed(3);
+
+    document.getElementById('restanteP1').innerText = t1;
+    document.getElementById('restanteP2').innerText = t2;
+
+    // Quem tem MAIS tempo acumulado perde (foi mais lento)
+    let texto;
+    if (Number(t1) < Number(t2)) texto = '🏆 Jogador 1 Venceu!';
+    else if (Number(t2) < Number(t1)) texto = '🏆 Jogador 2 Venceu!';
+    else texto = '🤝 Empate!';
+
+    document.getElementById('vencedorTexto').innerText = texto;
+    mostrarTela('telaFim');
+  }
+</script>
+</body>
+</html>
